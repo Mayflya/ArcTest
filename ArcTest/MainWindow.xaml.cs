@@ -16,6 +16,8 @@ using System.Windows.Shapes;
 using Esri.ArcGISRuntime;
 using Esri.ArcGISRuntime.Mapping;
 using Esri.ArcGISRuntime.Portal;
+using Esri.ArcGISRuntime.Security;
+
 
 namespace ArcTest
 {
@@ -24,6 +26,14 @@ namespace ArcTest
     /// </summary>
     public partial class MainWindow : Window
     {
+        // Constants for OAuth-related values ...
+        // URL of the server to authenticate with (ArcGIS Online)
+        private const string ArcGISOnlineUrl = "http://www.arcgis.com/sharing/rest";
+        // Client ID for the app registered with the server (Portal Maps)
+        private const string AppClientId = "jurkLK12eJ3n4bS9";
+        // Redirect URL after a successful authorization (configured for the Portal Maps application)
+        private const string OAuthRedirectUrl = "http://myapps.portalmapapp";
+       
         private string[] _basemapNames = new string[]
         {
         "Topographic",
@@ -35,12 +45,28 @@ namespace ArcTest
         "Light Gray"
         };
 
+       
+
+        // ChallengeHandler function that will be called whenever access to a secured resource is attempted
+        public async Task<Credential> CreateCredentialAsync(CredentialRequestInfo info)
+        {
+            Credential credential = null;
+            try
+            {
+                // IOAuthAuthorizeHandler will challenge the user for OAuth credentials
+                credential = await AuthenticationManager.Current.GenerateCredentialAsync(info.ServiceUri);
+            }
+            catch (Exception ex)
+            {
+                // Exception will be reported in calling function
+                throw (ex);
+            }
+            return credential;
+        }
         public MainWindow()
         {
             InitializeComponent();
-
-           
-       
+            UpdateAuthenticationManager();
             // Fill the basemap combo box with basemap names
             BasemapListBox.ItemsSource = _basemapNames;
             // Select the first basemap in the list by default
@@ -51,14 +77,28 @@ namespace ArcTest
             SaveMapButton.Click += SaveMapButton_Click;
         }
 
+        private async Task LoginToArcGISOnlineAsync()
+        {
+            // Create an OAuth credential request
+            CredentialRequestInfo loginInfo = new CredentialRequestInfo();
+            // Indicate the portal (url) to authenticate with (ArcGIS Online)
+            loginInfo.ServiceUri = new Uri(ArcGISOnlineUrl);
+            // Call GetCredentialAsync on the AuthenticationManager to invoke the challenge handler
+            await AuthenticationManager.Current.GetCredentialAsync(loginInfo, false);
+        }
+
         private async void SaveMapButton_Click(object sender, RoutedEventArgs e)
         {
             // Get the current map
             Map myMap = MyMapView.Map;
 
+          
+           
+         
             try
             {
-                if (myMap == null)
+                await LoginToArcGISOnlineAsync();
+                if (myMap.Item == null)
                 {
                     // Get the ArcGIS Online portal
                     ArcGISPortal agsOnline = await ArcGISPortal.CreateAsync();
@@ -85,6 +125,31 @@ namespace ArcTest
                 // Hide the progress bar
                 SaveProgressBar.Visibility = Visibility.Hidden;
             }
+        }
+
+        private void UpdateAuthenticationManager()
+        {
+            // Define the server information for ArcGIS Online
+            ServerInfo portalServerInfo = new ServerInfo();
+            // ArcGIS Online URI
+            portalServerInfo.ServerUri = new Uri(ArcGISOnlineUrl);
+            // Type of token authentication to use
+            portalServerInfo.TokenAuthenticationType = TokenAuthenticationType.OAuthImplicit;
+            // Define the OAuth information
+            OAuthClientInfo oAuthInfo = new OAuthClientInfo
+            {
+                ClientId = AppClientId,
+                RedirectUri = new Uri(OAuthRedirectUrl)
+            };
+            portalServerInfo.OAuthClientInfo = oAuthInfo;
+            // Get a reference to the (singleton) AuthenticationManager for the app
+            AuthenticationManager thisAuthenticationManager = AuthenticationManager.Current;
+            // Register the ArcGIS Online server information with the AuthenticationManager
+            thisAuthenticationManager.RegisterServer(portalServerInfo);
+            // Use the OAuthAuthorize class in this project to create a new web view to show the login UI
+            thisAuthenticationManager.OAuthAuthorizeHandler = new OAuthAuthorize();
+            // Create a new ChallengeHandler that uses a method in this class to challenge for credentials
+            thisAuthenticationManager.ChallengeHandler = new ChallengeHandler(CreateCredentialAsync);
         }
 
         private void BasemapListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

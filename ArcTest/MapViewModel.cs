@@ -13,6 +13,7 @@ using Esri.ArcGISRuntime.Security;
 using Esri.ArcGISRuntime.Symbology;
 using Esri.ArcGISRuntime.Tasks;
 using Esri.ArcGISRuntime.UI;
+using Esri.ArcGISRuntime.Portal;
 
 namespace ArcTest
 {
